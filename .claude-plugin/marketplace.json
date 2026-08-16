@@ -1,0 +1,14 @@
+{
+  "name": "civitas-cerebrum",
+  "owner": {
+    "name": "civitas-cerebrum",
+    "url": "https://github.com/civitas-cerebrum"
+  },
+  "plugins": [
+    {
+      "name": "small-agents",
+      "source": "./",
+      "description": "Keeps small and local models on target: a diagnostic protocol plus hooks that block approach thrash and silent abandonment."
+    }
+  ]
+}

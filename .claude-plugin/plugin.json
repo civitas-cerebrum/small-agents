@@ -1,0 +1,21 @@
+{
+  "name": "small-agents",
+  "version": "1.0.0",
+  "description": "Keeps small and local models on target. A diagnostic and editing protocol, plus hooks that block approach thrash and silent abandonment. Supersedes small-model-agent-skill.",
+  "author": {
+    "name": "Umut Ay Bora"
+  },
+  "homepage": "https://github.com/civitas-cerebrum/small-agents",
+  "repository": "https://github.com/civitas-cerebrum/small-agents",
+  "license": "MIT",
+  "keywords": [
+    "small-models",
+    "local-models",
+    "ollama",
+    "vllm",
+    "llama.cpp",
+    "debugging",
+    "hooks",
+    "agent-reliability"
+  ]
+}
