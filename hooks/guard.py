@@ -18,10 +18,7 @@ HYPOTHESIS_PREFIX = "HYPOTHESIS:"
 MIN_HYPOTHESIS_CHARS = 30
 
 BLOCK_MESSAGE = """\
-BLOCKED by small-agents: this approach has already failed {fails} times.
-
-This would be attempt {attempt}. The command is a reformulation of one that
-already failed -- so the parameters are not the problem, the approach is.
+BLOCKED by small-agents: {history}
 
 Do ONE of these instead:
 
@@ -79,12 +76,25 @@ def main():
     st["blocks"] = st.get("blocks", 0) + 1
     S.save(session, st)
 
-    sys.stderr.write(
-        BLOCK_MESSAGE.format(
-            fails=rec.get("fails", 0),
-            attempt=rec.get("fails", 0) + 1,
-            minchars=MIN_HYPOTHESIS_CHARS,
+    fails = rec.get("fails", 0)
+    # Never claim failures that did not happen -- a self-contradictory block
+    # message ("has already failed 0 times") destroys the message's authority
+    # and invites the agent to dismiss the whole harness.
+    if fails > 0:
+        history = (
+            "this approach has already failed %d times.\n\n"
+            "This would be attempt %d. The command is a reformulation of one\n"
+            "that already failed -- so the parameters are not the problem,\n"
+            "the approach is." % (fails, fails + 1)
         )
+    else:
+        history = (
+            "this approach has already been run in this session.\n\n"
+            "Re-running it unchanged cannot produce new information."
+        )
+
+    sys.stderr.write(
+        BLOCK_MESSAGE.format(history=history, minchars=MIN_HYPOTHESIS_CHARS)
     )
     return 2  # exit 2 on PreToolUse blocks the call; stderr is the reason
 

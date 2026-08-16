@@ -83,8 +83,33 @@ third attempt at the impossible approach and stays silent through all four
 legitimate commands.
 
 ```
-25 passed, 0 failed
+37 passed, 0 failed
 ```
+
+## Verified against a live local model
+
+The harness has been run end-to-end against a self-hosted
+**Qwen3.8-27B** via `lets-claude`, not just against fixtures. Live testing
+confirmed the full loop — a blocked command, the block message delivered to
+the model, and the model unblocking itself by writing a real `HYPOTHESIS:`
+into the tool description — and it found three defects that the fixture
+suite had missed:
+
+| Defect | Why fixtures missed it |
+|---|---|
+| The tokenizer kept `/` and `.` inside tokens, so a whole path collapsed into one atom and ordinary commands (`python3 host.py`) fell under the minimum token count. **The harness was inert for exactly the commands agents run most.** | Every fixture was a long compound command with many tokens. |
+| Re-running a command after *fixing* the code counted as thrash. | No fixture edited a file mid-session. An `Edit`/`Write` now resets the approach clock. |
+| The block message could claim an approach "has already failed 0 times". The model spotted the contradiction and dismissed the harness as misconfigured. | Fixtures only exercised the path where failures had actually occurred. |
+
+Each is covered by a regression test. The third is the instructive one: a
+self-contradictory enforcement message does not merely fail to help — it
+teaches the model to ignore the harness.
+
+Worth noting honestly: on two ordinary seeded diagnostic bugs the 27B model
+solved both cleanly, in 3 and 5 commands, with correct root causes — and the
+harness stayed silent, as it should. **Thrash is a failure mode of hard
+problems, not of every problem**, and the guard produced no false positives
+on competent work.
 
 ## Repo layout
 

@@ -230,6 +230,75 @@ def test_stop_hook():
     check("blocks at most once per session", rc == 0)
 
 
+def test_short_real_commands_are_fingerprinted():
+    """Regression: found by live testing against a 27B model.
+
+    The tokenizer kept "/" and "." inside tokens, so a whole path collapsed
+    into one atom and ordinary commands fell under MIN_TOKENS -- the harness
+    silently ignored every command in a real session."""
+    print("\n[7] short real-world commands are fingerprinted")
+    sys.path.insert(0, HOOKS)
+    import sa_state as S
+    for cmd, least in [("python3 host.py", 2),
+                       ("python3 -m app.main", 3),
+                       ("ls -R /private/tmp/scratch/runD", 4),
+                       ("cat app/cache.py", 3)]:
+        n = len(S.tokenize(cmd))
+        check("tokenizes %r into >=%d tokens (got %d)" % (cmd, least, n),
+              n >= least)
+
+    sid = "short-" + os.urandom(4).hex()
+    for _ in range(2):
+        post("python3 host.py", sid, 1, "ModuleNotFoundError: no module named app")
+    rc, _ = pre("python3 host.py", sid)
+    check("a repeated short failing command is now caught", rc == 2)
+
+
+def test_edit_resets_clock():
+    """Regression: re-running a command after fixing the code is
+    verification, not thrash, and must never be blocked."""
+    print("\n[8] an edit resets the approach clock")
+    sid = "edit-" + os.urandom(4).hex()
+    c = "python3 -m pytest tests/test_report.py"
+    for _ in range(2):
+        post(c, sid, 1, "AssertionError: expected 3 got 0")
+    rc, _ = pre(c, sid)
+    check("blocked while nothing has changed", rc == 2)
+
+    run_hook("record.py", {
+        "session_id": sid, "hook_event_name": "PostToolUse",
+        "tool_name": "Edit", "tool_input": {"file_path": "app/report.py"},
+        "tool_response": {"type": "text"}})
+    rc, _ = pre(c, sid)
+    check("re-running the same command after an edit is allowed", rc == 0)
+
+
+def test_block_message_is_truthful():
+    """Regression: found live -- the model was told an approach "has already
+    failed 0 times", spotted the contradiction, and dismissed the harness as
+    misconfigured. A block message must never claim failures that did not
+    happen."""
+    print("\n[9] block message never claims phantom failures")
+    sid = "msg-" + os.urandom(4).hex()
+    c = "python3 host.py"
+    post(c, sid, 0, "")                      # a SUCCESS, no failures at all
+    rc, msg = pre(c, sid, env={"SMALL_AGENTS_FAIL_LIMIT": "0"})
+    check("blocks under FAIL_LIMIT=0", rc == 2)
+    check("does not claim 'failed 0 times'", "failed 0 times" not in msg,
+          repr(msg[:80]))
+    check("states the true history instead",
+          "already been run in this session" in msg, repr(msg[:120]))
+    check("body does not contradict it either",
+          "already failed" not in msg, repr(msg[:250]))
+
+    sid2 = "msg2-" + os.urandom(4).hex()
+    for _ in range(2):
+        post(c, sid2, 1, "ModuleNotFoundError: no module named app")
+    rc, msg = pre(c, sid2)
+    check("real failures are still reported as failures",
+          "already failed 2 times" in msg, repr(msg[:100]))
+
+
 def test_safety():
     print("\n[6] safety -- the harness must never wedge a session")
     sid = "safe-" + os.urandom(4).hex()
@@ -241,7 +310,7 @@ def test_safety():
     check("SMALL_AGENTS_DISABLE=1 disables the guard", rc == 0)
 
     rc, _ = pre("ls", sid)
-    check("short commands are never fingerprinted", rc == 0)
+    check("single-token commands are never fingerprinted", rc == 0)
 
     for script in ("guard.py", "record.py", "land.py"):
         p = subprocess.run([sys.executable, os.path.join(HOOKS, script)],
@@ -264,6 +333,9 @@ if __name__ == "__main__":
         test_success_clears()
         test_compound_masked_failure()
         test_stop_hook()
+        test_short_real_commands_are_fingerprinted()
+        test_edit_resets_clock()
+        test_block_message_is_truthful()
         test_safety()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

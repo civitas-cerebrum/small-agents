@@ -18,15 +18,13 @@ import sys
 # Tokens that appear in almost every shell command and therefore carry no
 # information about *which approach* is being attempted.
 STOPWORDS = frozenset("""
-echo cat then else elif done fi do if for while in out the and not with
-true false null head tail sed awk cut tr wc sort uniq xargs printf
-dev null bin usr var tmp home local etc opt run
-2>&1 exit code set get let via
+echo then else elif done fi do if for while
+true false null and not the with
 """.split())
 
 DEFAULT_THRESHOLD = 0.55
 DEFAULT_FAIL_LIMIT = 2  # block the attempt that would be the 3rd
-MIN_TOKENS = 3  # below this a command is too short to fingerprint reliably
+MIN_TOKENS = 2  # below this a command is too short to fingerprint reliably
 
 # Error markers that indicate failure even when the shell reports exit 0
 # (very common in compound `a; b; c` commands where only the last exit
@@ -138,10 +136,14 @@ def tokenize(command):
     if not command:
         return set()
     lowered = command.lower()
-    raw = re.split(r"[^a-z0-9_\-./]+", lowered)
+    # Split on path and extension separators too. Keeping "/" and "." inside
+    # tokens collapses an entire path into a single atom, which silently
+    # pushes ordinary commands ("python3 host.py") under MIN_TOKENS and makes
+    # the harness inert for exactly the commands agents run most.
+    raw = re.split(r"[^a-z0-9_-]+", lowered)
     toks = set()
     for t in raw:
-        t = t.strip("-./_")
+        t = t.strip("-_")
         if len(t) < 3:
             continue
         if t in STOPWORDS:

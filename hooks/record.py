@@ -17,7 +17,19 @@ def main():
         return 0
 
     ev = S.read_event()
-    if ev.get("tool_name") != "Bash":
+    tool = ev.get("tool_name")
+
+    # An edit changes the world. Re-running a command that failed before the
+    # edit is verification, not thrash, so every approach clock resets.
+    if tool in ("Edit", "Write", "NotebookEdit", "MultiEdit"):
+        session = ev.get("session_id", "")
+        st = S.load(session)
+        for rec in st.get("approaches", []):
+            rec["fails"] = 0
+        S.save(session, st)
+        return 0
+
+    if tool != "Bash":
         return 0
 
     command = (ev.get("tool_input") or {}).get("command", "")
