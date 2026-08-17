@@ -46,7 +46,7 @@ def pre(cmd, sid, desc="", env=None):
 
 
 def post(cmd, sid, exit_code=0, stderr="", stdout="", env=None):
-    return run_hook("record.py", {
+    return run_hook("coach.py", {
         "session_id": sid, "hook_event_name": "PostToolUse",
         "tool_name": "Bash", "tool_input": {"command": cmd},
         "tool_response": {"exit_code": exit_code, "stderr": stderr,
@@ -265,7 +265,7 @@ def test_edit_resets_clock():
     rc, _ = pre(c, sid)
     check("blocked while nothing has changed", rc == 2)
 
-    run_hook("record.py", {
+    run_hook("coach.py", {
         "session_id": sid, "hook_event_name": "PostToolUse",
         "tool_name": "Edit", "tool_input": {"file_path": "app/report.py"},
         "tool_response": {"type": "text"}})
@@ -299,6 +299,45 @@ def test_block_message_is_truthful():
           "already failed 2 times" in msg, repr(msg[:100]))
 
 
+def coach(cmd, sid, exit_code=0, stderr="", stdout=""):
+    e=dict(os.environ)
+    p=subprocess.run([sys.executable, os.path.join(HOOKS,"coach.py")],
+        input=json.dumps({"session_id":sid,"hook_event_name":"PostToolUse",
+            "tool_name":"Bash","tool_input":{"command":cmd},
+            "tool_response":{"exit_code":exit_code,"stderr":stderr,"stdout":stdout,"interrupted":False}}),
+        capture_output=True,text=True,env=e)
+    try: return json.loads(p.stdout)["hookSpecificOutput"]["additionalContext"]
+    except Exception: return None
+
+
+def test_coach():
+    """v1.2: live coaching via PostToolUse additionalContext. Found needed by
+    A/B testing -- interrogation probes exit 0 with useless output, so the
+    blocking guard (failure-gated) never fires on real thrash."""
+    print("\n[10] coach -- live nudges without blocking")
+    sid = "coach-" + os.urandom(4).hex()
+    c = "zsh -c 'compinit probe number one lets-cl'"
+    n1 = coach(c, sid); n2 = coach(c, sid)
+    check("no nudge on 1st or 2nd run", n1 is None and n2 is None)
+    n3 = coach(c, sid)
+    check("nudges on 3rd similar command even with exit 0",
+          n3 is not None and "NAME step" in n3)
+    n4 = coach(c, sid)
+    check("nudges again on 4th", n4 is not None)
+    n5 = coach(c, sid)
+    check("stops after two nudges per approach (anti-noise cap)", n5 is None)
+
+    sid2 = "coach2-" + os.urandom(4).hex()
+    n = coach("zsh -c 'some totally new approach here'", sid2, 0,
+              "_tags: can only be called from completion function")
+    check("method-error nudge fires immediately",
+          n is not None and "runtime context" in n)
+
+    sid3 = "coach3-" + os.urandom(4).hex()
+    n = coach("ls -la /tmp/workspace/project", sid3)
+    check("ordinary first-time command gets no nudge", n is None)
+
+
 def test_safety():
     print("\n[6] safety -- the harness must never wedge a session")
     sid = "safe-" + os.urandom(4).hex()
@@ -312,7 +351,7 @@ def test_safety():
     rc, _ = pre("ls", sid)
     check("single-token commands are never fingerprinted", rc == 0)
 
-    for script in ("guard.py", "record.py", "land.py"):
+    for script in ("guard.py", "coach.py", "record.py", "land.py"):
         p = subprocess.run([sys.executable, os.path.join(HOOKS, script)],
                            input="not json at all", capture_output=True, text=True)
         check("%s fails open on malformed payload" % script, p.returncode == 0)
@@ -336,6 +375,7 @@ if __name__ == "__main__":
         test_short_real_commands_are_fingerprinted()
         test_edit_resets_clock()
         test_block_message_is_truthful()
+        test_coach()
         test_safety()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

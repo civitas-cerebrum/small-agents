@@ -101,6 +101,21 @@ Full protocol, context budgets by model size, and edit-size limits are in
 
 ---
 
+## DISPATCH — fresh context per step
+
+Context is the scarcest resource, and long investigations poison it: every
+dead end stays in the window. When a subagent mechanism is available
+(Claude Code's Agent/Task tool), run DIAGNOSE as an orchestrator:
+
+- Keep only the task, a ≤15-line notebook, and the current dispatch.
+- Send each step out as a subagent with a four-part brief:
+  GOAL (one step) / CONTEXT (only what this step needs) / COMMANDS
+  (exact) / RETURN (a capped verdict, never a transcript).
+- The subagent inherits nothing — gaps in the brief expose gaps in your
+  understanding before they cost a wrong turn.
+
+Full pattern and a worked example: `dispatching.md`.
+
 ## Red Flags — stop and restart the loop
 
 | You are about to... | What it actually means |

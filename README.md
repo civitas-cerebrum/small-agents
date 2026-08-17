@@ -32,10 +32,12 @@ and did not follow it. So this repo enforces the two rules mechanically.
 - **CHANGE** — PLAN → FOCUS → ACT → VERIFY, for making an edit that works
   (carried forward from the predecessor skill).
 
-**The harness** (`hooks/`) — two blocks:
+**The harness** (`hooks/`) — delivery, coaching, and two blocks:
 
 | Trigger | Hook | Effect |
 |---|---|---|
+| Session starts | `SessionStart` | The protocol core is injected as context — delivery does not depend on the model choosing to load a skill. |
+| Output shows a method-error ("can only be called from…"), or a 3rd similar command regardless of exit status | `PostToolUse` | A short coaching note is injected (`additionalContext`) — non-blocking, no failure classification needed. |
 | A third run of an approach that already failed twice | `PreToolUse` | Blocked. To proceed, the model must write `HYPOTHESIS: <cause and evidence>` in the tool call's `description`. |
 | Ending a turn with no verdict after a failed investigation | `Stop` | Blocked. The model must state a root cause or say plainly that it is stuck. |
 
@@ -83,10 +85,39 @@ third attempt at the impossible approach and stays silent through all four
 legitimate commands.
 
 ```
-37 passed, 0 failed
+44 passed, 0 failed
 ```
 
-## Verified against a live local model
+## A/B tested against a live local model
+
+The plugin was validated with a controlled A/B experiment: a self-hosted
+**Qwen3.8-27B** (vLLM, via `lets-claude`) given a hard diagnostic task — a
+faithful reproduction of the real failure this repo was built from (a zsh
+command that runs but won't tab-complete; the tempting interrogation
+approach is impossible and errors identically every time). Control arm: no
+plugin. Treatment arm: this plugin. Every run graded functionally by a pty
+replay (does TAB now complete?), plus transcript metrics. 25-minute cap
+per run.
+
+**Primary result** (versions with guaranteed protocol delivery, n=14/arm):
+
+| Metric | Control | Harness | p (exact) |
+|---|---|---|---|
+| Solved (fix works in pty replay) | 3/14 | **10/14** | **0.021** (Fisher) |
+| Commands until working fix (median) | never | 22 | **0.011** (Mann-Whitney) |
+| Bash commands per run (median) | 24 | 18 | 0.097 |
+
+Sensitivity analysis over every rep ever run (n=18/arm): solved p=0.007,
+commands p=0.007, time-to-fix p=0.0008 — same direction, stronger.
+
+Caveats, stated plainly: one task family, one model, sequential batches in
+which the treatment was repaired between rounds (the control arm was
+byte-identical throughout; grading was automated and identical for both
+arms). In one treatment run the full loop fired end-to-end organically:
+thrash → **blocked** → model wrote a genuine `HYPOTHESIS:` → recovered →
+solved the task.
+
+## What live testing changed
 
 The harness has been run end-to-end against a self-hosted
 **Qwen3.8-27B** via `lets-claude`, not just against fixtures. Live testing
@@ -118,9 +149,10 @@ on competent work.
 | `skills/small-agents/SKILL.md` | The protocol — both loops, red flags, rationalization table |
 | `skills/small-agents/diagnosing.md` | DIAGNOSE in depth: observe vs. interrogate, hypothesis quality, worked contrast |
 | `skills/small-agents/editing.md` | CHANGE in depth: context budgets, edit sizing, working-memory notebook |
+| `skills/small-agents/dispatching.md` | DISPATCH: run long investigations as an orchestrator — one subagent per step, crafted four-part briefs, fresh context each step |
 | `skills/small-agents/failure-modes.md` | 16 failure modes with countermeasures (1–10 editing, 11–16 investigation) |
 | `skills/small-agents/language-tips.md` | Per-language guidance |
-| `hooks/` | The harness: `guard.py`, `record.py`, `land.py`, shared `sa_state.py` |
+| `hooks/` | The harness: `inject.py`, `coach.py`, `guard.py`, `land.py`, shared `sa_state.py` (`record.py` kept for reference) |
 | `tests/test_hooks.py` | Replay suite |
 
 ## License

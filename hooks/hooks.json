@@ -1,6 +1,17 @@
 {
   "description": "small-agents: keeps small local models on target during investigation. Blocks repeated failed approaches and silent abandonment.",
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/inject.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash",
@@ -19,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/record.py",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/coach.py",
             "timeout": 10
           }
         ]
