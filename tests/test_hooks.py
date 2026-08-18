@@ -381,6 +381,78 @@ def test_deliverable_checkpoints():
           n6 is not None and "Bank" in n6)
 
 
+def test_plan_gate():
+    """v1.4 mission mode: brainstorm-then-plan as a mechanical gate, plus
+    the 25-minute bank-or-justify escalation. Motivated by two 45-min runs
+    captured by the hardest sub-problem with nothing delivered."""
+    print("\n[12] mission-mode plan gate")
+    import tempfile, time as _t
+    ws = tempfile.mkdtemp(prefix="plangate-")
+    env = {"SMALL_AGENTS_PLAN": "1"}
+    def gate(tool, tin, sid="pg1", cwd=ws):
+        return run_hook("plan_gate.py", {"session_id": sid,
+            "hook_event_name": "PreToolUse", "cwd": cwd,
+            "tool_name": tool, "tool_input": tin}, env)
+
+    rc, msg = gate("Bash", {"command": "ls -la"})
+    check("blocks Bash before PLAN.md exists", rc == 2 and "PLAN.md" in msg)
+    rc, _ = gate("Edit", {"file_path": ws + "/foo.py"})
+    check("blocks edits before PLAN.md", rc == 2)
+    rc, _ = gate("Write", {"file_path": ws + "/PLAN.md"})
+    check("writing PLAN.md itself is allowed", rc == 0)
+
+    open(ws + "/PLAN.md", "w").write("## Goal\nx\n## Tasks\n- [ ] 1. a | deliverable: a.ts | verify: t\n- [ ] 2. b | deliverable: b.ts | verify: t\n")
+    rc, _ = gate("Bash", {"command": "ls -la"})
+    check("valid plan unlocks work", rc == 0)
+
+    open(ws + "/PLAN.md", "w").write("just some prose")
+    rc, _ = gate("Bash", {"command": "ls -la"})
+    check("a structureless PLAN.md does not satisfy the gate", rc == 2)
+    open(ws + "/PLAN.md", "w").write("## Goal\nx\n## Tasks\n- [ ] 1. a | deliverable: a.ts | verify: t\n- [ ] 2. b | deliverable: b.ts | verify: t\n")
+
+    print("    25-minute bank-or-justify escalation")
+    sys.path.insert(0, HOOKS)
+    import sa_state as S
+    sid = "pg-esc-" + os.urandom(4).hex()
+    st = S.load(sid); st["t0"] = _t.time() - 26 * 60; S.save(sid, st)
+    rc, msg = gate("Bash", {"command": "node probe.js"}, sid=sid)
+    check("blocks Bash at 25m with zero deliverables", rc == 2 and "Bank" not in msg and "deliverable" in msg)
+    rc, _ = gate("Bash", {"command": "node probe.js",
+        "description": "INVESTIGATION: this decides which selector strategy the whole suite uses"}, sid=sid)
+    check("INVESTIGATION justification passes", rc == 0)
+    rc, _ = gate("Write", {"file_path": ws + "/spec.ts"}, sid=sid)
+    check("edits (banking) are never escalation-blocked", rc == 0)
+    st = S.load(sid); st["deliverables"] = 1; S.save(sid, st)
+    rc, _ = gate("Bash", {"command": "node probe.js"}, sid=sid)
+    check("a banked deliverable lifts the escalation", rc == 0)
+
+    print("    off outside mission mode")
+    rc, _ = run_hook("plan_gate.py", {"session_id": "pg2",
+        "hook_event_name": "PreToolUse", "cwd": ws,
+        "tool_name": "Bash", "tool_input": {"command": "ls"}}, {})
+    check("inactive without SMALL_AGENTS_PLAN", rc == 0)
+
+
+def test_deliverable_workspace_scoping():
+    """Re-match #2 regression: /tmp probe scripts must not count."""
+    print("\n[13] deliverables are workspace-scoped")
+    import tempfile
+    ws = tempfile.mkdtemp(prefix="scope-")
+    sid = "scope-" + os.urandom(4).hex()
+    def write(path):
+        run_hook("coach.py", {"session_id": sid, "hook_event_name": "PostToolUse",
+            "cwd": ws, "tool_name": "Write", "tool_input": {"file_path": path},
+            "tool_response": {"type": "text"}})
+    sys.path.insert(0, HOOKS)
+    import sa_state as S
+    write("/tmp/dp-probe-1.js")
+    check("a /tmp write does not count",
+          S.load(sid).get("deliverables", 0) == 0)
+    write(ws + "/tests/forms.spec.ts")
+    check("a workspace write counts",
+          S.load(sid).get("deliverables", 0) == 1)
+
+
 def test_safety():
     print("\n[6] safety -- the harness must never wedge a session")
     sid = "safe-" + os.urandom(4).hex()
@@ -420,6 +492,8 @@ if __name__ == "__main__":
         test_block_message_is_truthful()
         test_coach()
         test_deliverable_checkpoints()
+        test_plan_gate()
+        test_deliverable_workspace_scoping()
         test_safety()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

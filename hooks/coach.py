@@ -67,10 +67,14 @@ NUDGE_BANK_VALUE = (
     "finish everything else first and time-box the hard one explicitly."
 )
 
-# Paths that never count as deliverables: hidden dirs/files and throwaway
-# probe scripts live outside the task's real output.
-def _is_deliverable(path):
-    parts = [p for p in str(path).split("/") if p]
+# A deliverable must live INSIDE the session's workspace (re-match #2
+# lesson: the model wrote 7 probe scripts to /tmp and they were miscounted,
+# muting the second checkpoint) and not in a hidden directory.
+def _is_deliverable(path, cwd):
+    path = str(path)
+    if cwd and not os.path.abspath(path).startswith(os.path.abspath(cwd) + os.sep):
+        return False
+    parts = [p for p in path.split("/") if p]
     return bool(parts) and not any(p.startswith(".") for p in parts[-2:])
 
 REPEAT_AT = 3  # coach on the 3rd similar command
@@ -97,7 +101,8 @@ def main():
         st = S.load(session)
         for rec in st.get("approaches", []):
             rec["fails"] = 0
-        if _is_deliverable((ev.get("tool_input") or {}).get("file_path", "")):
+        if _is_deliverable((ev.get("tool_input") or {}).get("file_path", ""),
+                           ev.get("cwd")):
             st["deliverables"] = st.get("deliverables", 0) + 1
         S.save(session, st)
         return 0
