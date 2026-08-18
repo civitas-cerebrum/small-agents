@@ -65,6 +65,13 @@ multi-deliverable task. The harness enforces:
 4. Give every dispatch brief a time budget ("aim for <=10 minutes;
    return a partial verdict rather than overrunning") -- dispatched
    subagents get harness wrap-up nudges at 10 and 15 minutes.
+   ATOMICITY: a task whose brief needs more than a few lines is a
+   composite -- split it into separate PLAN.md tasks BEFORE dispatching
+   (re-match #5: one "inspect everything" dispatch ran 30+ minutes;
+   five 5-minute errands would have banked partial value throughout).
+   If you are the DISPATCHED agent: your brief is your plan -- open by
+   listing the 3-5 checks you will perform, then execute them in order;
+   do not create plans of your own or dispatch further agents.
 5. A dispatched subagent DIES IF THIS SESSION ENDS. After dispatching,
    WAIT for its verdict (blocking TaskOutput) and only then update
    PLAN.md and move on. Ending with unchecked plan tasks is blocked;
