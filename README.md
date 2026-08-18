@@ -181,6 +181,18 @@ Honest scope note: disabling thinking speeds up calls dramatically but
 did not significantly change solve outcomes in testing (n=6/arm) — wrong
 investigative paths, not thinking spirals, dominated the failures.
 
+## Mission-mode selection (measured, six benchmark runs)
+
+| Mode | When | Evidence |
+|---|---|---|
+| (off) | Interactive work, small tasks | Gates would be ceremony |
+| `SMALL_AGENTS_PLAN=1` — plan gate + voluntary dispatch | Multi-deliverable tasks that fit one context and one sitting (~45 min) | Best small-model result on the benchmark: 11/11 tests green, 12/13 rubric, self-finished at 42 min — vs 0/13 twice ungated |
+| `SMALL_AGENTS_PLAN=2` — strict dispatch | Tasks too large for one context window, or budgets ≥ ~2× the PLAN=1 time | Three 45-min runs each banked only 2–3 plan tasks: dispatch round-trips cost ~8–15 min each on a self-hosted 27B. Orchestration quality was high (atomic plans, parallel dispatches, superb inspection artifacts) — the budget, not the discipline, was the binding constraint |
+
+Rule of thumb from the data: strict dispatch buys context immunity at
+roughly a 2× wall-clock tax on slow substrates. Pay it only when context
+death is otherwise certain.
+
 ## Repo layout
 
 | Path | What |
