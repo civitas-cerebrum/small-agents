@@ -142,6 +142,45 @@ harness stayed silent, as it should. **Thrash is a failure mode of hard
 problems, not of every problem**, and the guard produced no false positives
 on competent work.
 
+## Operational tools (`tools/`)
+
+Two standalone utilities distilled from a larger dispatch-harness
+experiment (ascent). The full experiment — recursive challenge dispatch,
+survey/decompose orchestration — was A/B tested against plain solo
+execution across ~33 runs and lost on time (MW p=0.0085) without winning
+on solve rate, and was discarded. These two pieces repeatedly earned
+their keep and survive it:
+
+- **`tools/judged_run.py`** — wraps a solo agent run in the two gates that
+  solo lacks: the harness executes the verification command itself (a
+  solver's word is never evidence), then an independent fresh-context
+  judge — told nothing of the solver's reasoning — re-runs the check and
+  hunts stubs, hardcoding, and gamed tests before ruling. Observed
+  catching exactly the failure solo never catches: a model confidently
+  declaring success over a broken fix. Failure evidence feeds the retry.
+
+  ```bash
+  tools/judged_run.py --goal "..." --verify-cmd "python3 check.py" \
+      [--plugin-dir /path/to/small-agents]   # load this plugin into the solver
+  ```
+
+- **`tools/nothink_proxy.py`** — vLLM's Anthropic-compat endpoint ignores
+  the standard `thinking` parameter but honors a top-level
+  `chat_template_kwargs: {"enable_thinking": false}` (undocumented;
+  found by probing). This 90-line proxy injects it into every
+  `/v1/messages` request: ~13s → ~0.2s single-turn latency on a
+  Qwen3-class model, no runaway-reasoning stalls, Claude Code CLI works
+  through it unchanged (tools + streaming verified).
+
+  ```bash
+  NOTHINK_UPSTREAM=https://your-vllm-host python3 tools/nothink_proxy.py
+  export ANTHROPIC_BASE_URL=http://127.0.0.1:8399
+  ```
+
+Honest scope note: disabling thinking speeds up calls dramatically but
+did not significantly change solve outcomes in testing (n=6/arm) — wrong
+investigative paths, not thinking spirals, dominated the failures.
+
 ## Repo layout
 
 | Path | What |
@@ -154,6 +193,8 @@ on competent work.
 | `skills/small-agents/language-tips.md` | Per-language guidance |
 | `hooks/` | The harness: `inject.py`, `coach.py`, `guard.py`, `land.py`, shared `sa_state.py` (`record.py` kept for reference) |
 | `tests/test_hooks.py` | Replay suite |
+| `tools/judged_run.py` | Solo run + harness verification + independent judge |
+| `tools/nothink_proxy.py` | Per-request thinking disable for vLLM Anthropic endpoints |
 
 ## License
 
