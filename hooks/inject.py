@@ -61,7 +61,12 @@ multi-deliverable task. The harness enforces:
    the main session may only dispatch, edit PLAN.md, and run
    verifications via Bash described as "VERIFY: ...".)
 3. Bank deliverables early and often; after 25 minutes with nothing
-   banked, non-deliverable commands are blocked."""
+   banked, non-deliverable commands are blocked.
+4. A dispatched subagent DIES IF THIS SESSION ENDS. After dispatching,
+   WAIT for its verdict (blocking TaskOutput) and only then update
+   PLAN.md and move on. Ending with unchecked plan tasks is blocked;
+   a task you cannot finish must be marked blocked in PLAN.md with a
+   one-line reason."""
 
 
 def main():
