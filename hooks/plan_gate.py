@@ -41,6 +41,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import sa_state as S
 
 ESCALATE_AFTER_MIN = 25
+SUBAGENT_DEADLINE_MIN = 20   # hard; nudges at 10/15 proved advisory-only
+                              # (90-min run: one dispatch consumed 73 min
+                              # through two ignored wrap-up nudges)
 INVESTIGATION_PREFIX = "INVESTIGATION:"
 MIN_JUSTIFICATION = 30
 
@@ -82,6 +85,17 @@ this command with a justification in the tool description:
 """
 
 
+DEADLINE_BLOCK = """\
+BLOCKED by small-agents (dispatch deadline): this dispatched task has run
+{mins} minutes -- past its hard deadline. All further tool use in this
+dispatch is blocked.
+
+Your only remaining move is the right one: END NOW with your verdict --
+what you established, what you produced, what remains. A partial verdict
+your parent can act on is the deliverable; more tool calls are not.
+"""
+
+
 DISPATCH_BLOCK = """\
 BLOCKED by small-agents (strict dispatch): the plan exists, so the main
 session is now an orchestrator. This work belongs in a subagent.
@@ -120,6 +134,21 @@ def main():
         return 0
     cwd = ev.get("cwd") or os.getcwd()
     tool_input = ev.get("tool_input") or {}
+
+    # Hard dispatch deadline: inside a subagent past the window, every tool
+    # is blocked -- the only possible next act is emitting the verdict.
+    agent_id = ev.get("agent_id")
+    if agent_id:
+        session = ev.get("session_id", "")
+        st = S.load(session)
+        ag = st.setdefault("agents", {}).setdefault(
+            agent_id, {"t0": time.time(), "wrapups": 0})
+        S.save(session, st)
+        a_min = (time.time() - ag["t0"]) / 60.0
+        if a_min >= SUBAGENT_DEADLINE_MIN:
+            sys.stderr.write(DEADLINE_BLOCK.format(mins=int(a_min)))
+            return 2
+        return 0   # within deadline: subagents work freely
 
     # Writing the plan itself is always allowed.
     fp = str(tool_input.get("file_path", ""))

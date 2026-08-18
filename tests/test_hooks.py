@@ -472,6 +472,39 @@ def test_strict_dispatch():
     check("no plan -> plan block, not dispatch block", rc == 2 and "PLAN.md" in msg)
 
 
+def test_dispatch_deadline():
+    """90-min run regression: an inspection dispatch ran 73 minutes through
+    two ignored advisory nudges. Past the hard deadline, every tool call in
+    a subagent blocks -- the only possible act left is emitting the verdict."""
+    print("\n[17] hard dispatch deadline")
+    import tempfile, time as _t
+    ws = tempfile.mkdtemp(prefix="ddl-")
+    open(ws + "/PLAN.md", "w").write("## Tasks\n- [ ] 1. a | verify: t\n- [ ] 2. b | verify: t\n")
+    env = {"SMALL_AGENTS_PLAN": "2"}
+    sys.path.insert(0, HOOKS)
+    import sa_state as S
+    sid = "ddl-" + os.urandom(4).hex(); aid = "agent-77"
+    def gate(tool, tin):
+        return run_hook("plan_gate.py", {"session_id": sid, "agent_id": aid,
+            "hook_event_name": "PreToolUse", "cwd": ws,
+            "tool_name": tool, "tool_input": tin}, env)
+    rc, _ = gate("Bash", {"command": "npx something"})
+    check("fresh subagent works freely", rc == 0)
+    st = S.load(sid); st["agents"][aid]["t0"] = _t.time() - 21 * 60; S.save(sid, st)
+    rc, msg = gate("Bash", {"command": "npx something"})
+    check("Bash blocked past deadline", rc == 2 and "deadline" in msg)
+    rc, _ = gate("Write", {"file_path": ws + "/notes.md"})
+    check("Write blocked past deadline too", rc == 2)
+    rc, _ = gate("Edit", {"file_path": ws + "/PLAN.md"})
+    check("even PLAN.md edits blocked in an overdue subagent", rc == 2)
+    # main session unaffected by any of this
+    rc, _ = run_hook("plan_gate.py", {"session_id": sid,
+        "hook_event_name": "PreToolUse", "cwd": ws,
+        "tool_name": "Bash", "tool_input": {"command": "ls",
+        "description": "VERIFY: check"}}, env)
+    check("orchestrator unaffected", rc == 0)
+
+
 def test_deliverable_workspace_scoping():
     """Re-match #2 regression: /tmp probe scripts must not count."""
     print("\n[13] deliverables are workspace-scoped")
@@ -607,6 +640,7 @@ if __name__ == "__main__":
         test_strict_dispatch()
         test_plan_completion_stop_gate()
         test_subagent_wrapup()
+        test_dispatch_deadline()
         test_deliverable_workspace_scoping()
         test_safety()
     finally:
