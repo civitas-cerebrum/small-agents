@@ -59,6 +59,17 @@ Before ending, say one of these plainly:
 """
 
 
+PLAN_INCOMPLETE = """\
+BLOCKED by small-agents (mission mode): PLAN.md still has {n} unchecked
+task(s). Re-match #4 failure mode: the orchestrator ended its run at
+minute 36 reporting a subagent as "actively running" -- subagents do not
+outlive the session; ending the session abandons them.
+
+Either: continue executing the plan (dispatch the next task and WAIT for
+its verdict), or mark the remaining tasks as blocked in PLAN.md with a
+one-line reason each, then land with a verdict as usual."""
+
+
 def main():
     if S.disabled():
         return 0
@@ -68,6 +79,23 @@ def main():
     # Never fight a stop twice -- that is an infinite loop.
     if ev.get("stop_hook_active"):
         return 0
+
+    # Mission mode: never end with unchecked plan tasks (at most twice,
+    # tracked via plan_land_blocks, to avoid loops with a stubborn model).
+    if os.environ.get("SMALL_AGENTS_PLAN", "") in ("1", "2", "true"):
+        session = ev.get("session_id", "")
+        st = S.load(session)
+        cwd = ev.get("cwd") or os.getcwd()
+        try:
+            plan = open(os.path.join(cwd, "PLAN.md")).read()
+        except OSError:
+            plan = ""
+        unchecked = len(re.findall(r"- \[ \]", plan))
+        if unchecked and st.get("plan_land_blocks", 0) < 2:
+            st["plan_land_blocks"] = st.get("plan_land_blocks", 0) + 1
+            S.save(session, st)
+            sys.stderr.write(PLAN_INCOMPLETE.format(n=unchecked))
+            return 2
 
     session = ev.get("session_id", "")
     st = S.load(session)

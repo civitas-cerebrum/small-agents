@@ -492,6 +492,41 @@ def test_deliverable_workspace_scoping():
           S.load(sid).get("deliverables", 0) == 1)
 
 
+def test_plan_completion_stop_gate():
+    """Re-match #4 regression: orchestrator ended at minute 36 with 5
+    unchecked plan tasks, reporting a subagent as still running."""
+    print("\n[15] mission-mode stop gate on unchecked plan tasks")
+    import tempfile
+    ws = tempfile.mkdtemp(prefix="landplan-")
+    open(ws + "/PLAN.md", "w").write("## Tasks\n- [x] 1. done | verify: t\n- [ ] 2. pending | verify: t\n")
+    env = {"SMALL_AGENTS_PLAN": "2"}
+    sid = "lp-" + os.urandom(4).hex()
+    def stop(msg, active=False):
+        return run_hook("land.py", {"session_id": sid, "cwd": ws,
+            "hook_event_name": "Stop", "stop_hook_active": active,
+            "last_assistant_message": msg}, env)
+    rc, msg = stop("Stage 2 inspection is actively running; ending here.")
+    check("blocks ending with unchecked tasks", rc == 2 and "unchecked" in msg)
+    rc, _ = stop("still going to stop", active=True)
+    check("never fights an active stop hook", rc == 0)
+    rc, _ = stop("attempt again")
+    check("second block allowed", rc == 2)
+    rc, _ = stop("third attempt")
+    check("capped at two blocks (no infinite loop)", rc == 0)
+
+    ws2 = tempfile.mkdtemp(prefix="landplan2-")
+    open(ws2 + "/PLAN.md", "w").write("## Tasks\n- [x] 1. a | verify: t\n- [x] 2. b | verify: t\n")
+    rc, _ = run_hook("land.py", {"session_id": "lp2", "cwd": ws2,
+        "hook_event_name": "Stop", "stop_hook_active": False,
+        "last_assistant_message": "all done"}, env)
+    check("fully-checked plan ends freely", rc == 0)
+
+    rc, _ = run_hook("land.py", {"session_id": "lp3", "cwd": ws,
+        "hook_event_name": "Stop", "stop_hook_active": False,
+        "last_assistant_message": "done"}, {})
+    check("inactive outside mission mode", rc == 0)
+
+
 def test_safety():
     print("\n[6] safety -- the harness must never wedge a session")
     sid = "safe-" + os.urandom(4).hex()
@@ -533,6 +568,7 @@ if __name__ == "__main__":
         test_deliverable_checkpoints()
         test_plan_gate()
         test_strict_dispatch()
+        test_plan_completion_stop_gate()
         test_deliverable_workspace_scoping()
         test_safety()
     finally:
