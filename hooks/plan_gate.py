@@ -18,6 +18,18 @@ zero deliverables banked inside the workspace, further Bash is blocked
 until either a deliverable lands or the call carries an explicit
 `INVESTIGATION: <why this must continue, >=30 chars>` in its description
 -- the same escape-hatch pattern as the hypothesis gate.
+
+Rule 3 (strict dispatch, SMALL_AGENTS_PLAN=2): once the plan exists, the
+MAIN session becomes a pure orchestrator -- every plan task must run in a
+subagent (Agent/Task tool), keeping the orchestrator's context to plan +
+verdicts. Empirically distinguished via the hook payload's agent_id
+(measured: null in the main session, set in subagents), so subagents work
+freely. The orchestrator keeps: PLAN.md edits, and Bash whose description
+starts with `VERIFY:` (running a task's verification itself is the
+orchestrator's job). Evidence: the one dispatched phase in re-match #3
+was the phase that had consumed entire 45-minute budgets when inline, and
+the orchestrator still hit the 129k context ceiling from the tasks it ran
+inline.
 """
 
 import os
@@ -70,6 +82,22 @@ this command with a justification in the tool description:
 """
 
 
+DISPATCH_BLOCK = """\
+BLOCKED by small-agents (strict dispatch): the plan exists, so the main
+session is now an orchestrator. This work belongs in a subagent.
+
+Dispatch the current PLAN.md task with the Agent/Task tool, briefing it
+with: GOAL (that one task) / CONTEXT (only what it needs -- paths, the
+element inventory, the verify command) / COMMANDS / RETURN (a capped
+verdict, never a transcript). The subagent works freely; your context
+stays clean for the remaining tasks.
+
+The orchestrator itself may still: edit PLAN.md (tracking progress), and
+run a task's verification directly with a Bash call whose description
+starts with "VERIFY:".
+"""
+
+
 def plan_ok(cwd):
     p = os.path.join(cwd, "PLAN.md")
     try:
@@ -83,7 +111,7 @@ def plan_ok(cwd):
 def main():
     if S.disabled():
         return 0
-    if os.environ.get("SMALL_AGENTS_PLAN", "") not in ("1", "true"):
+    if os.environ.get("SMALL_AGENTS_PLAN", "") not in ("1", "2", "true"):
         return 0
 
     ev = S.read_event()
@@ -101,6 +129,17 @@ def main():
     if not plan_ok(cwd):
         sys.stderr.write(PLAN_BLOCK)
         return 2
+
+    # Rule 3: strict dispatch -- main session orchestrates, subagents work.
+    if os.environ.get("SMALL_AGENTS_PLAN") == "2" and not ev.get("agent_id"):
+        desc = str(tool_input.get("description", "")).strip()
+        if tool == "Bash" and desc.upper().startswith("VERIFY:"):
+            pass  # orchestrator running a task's verification
+        elif tool in ("Edit", "Write") and fp.endswith("PLAN.md"):
+            pass  # plan bookkeeping
+        else:
+            sys.stderr.write(DISPATCH_BLOCK)
+            return 2
 
     # Rule 2: bank-or-justify escalation (Bash only -- edits ARE banking).
     if tool != "Bash":

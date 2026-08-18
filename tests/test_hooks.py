@@ -433,6 +433,45 @@ def test_plan_gate():
     check("inactive without SMALL_AGENTS_PLAN", rc == 0)
 
 
+def test_strict_dispatch():
+    """v1.5 rule 3: under SMALL_AGENTS_PLAN=2, after the plan exists the
+    main session (agent_id null -- empirically measured) may only dispatch,
+    edit PLAN.md, or run VERIFY: Bash; subagents (agent_id set) work
+    freely."""
+    print("\n[14] strict dispatch (PLAN=2)")
+    import tempfile
+    ws = tempfile.mkdtemp(prefix="strict-")
+    open(ws + "/PLAN.md", "w").write("## Goal\nx\n## Tasks\n- [ ] 1. a | deliverable: a.ts | verify: t\n- [ ] 2. b | deliverable: b.ts | verify: t\n")
+    env = {"SMALL_AGENTS_PLAN": "2"}
+    def gate(tool, tin, agent_id=None):
+        payload = {"session_id": "sd1", "hook_event_name": "PreToolUse",
+                   "cwd": ws, "tool_name": tool, "tool_input": tin}
+        if agent_id:
+            payload["agent_id"] = agent_id
+        return run_hook("plan_gate.py", payload, env)
+
+    rc, msg = gate("Bash", {"command": "npx playwright test"})
+    check("main-session Bash blocked", rc == 2 and "subagent" in msg)
+    rc, _ = gate("Write", {"file_path": ws + "/tests/x.spec.ts"})
+    check("main-session Write blocked", rc == 2)
+    rc, _ = gate("Edit", {"file_path": ws + "/PLAN.md"})
+    check("PLAN.md bookkeeping allowed", rc == 0)
+    rc, _ = gate("Bash", {"command": "npx playwright test",
+                          "description": "VERIFY: task 4 verification"})
+    check("VERIFY: Bash allowed for the orchestrator", rc == 0)
+    rc, _ = gate("Bash", {"command": "npx playwright test"}, agent_id="a812")
+    check("subagent Bash works freely", rc == 0)
+    rc, _ = gate("Write", {"file_path": ws + "/tests/x.spec.ts"}, agent_id="a812")
+    check("subagent Write works freely", rc == 0)
+
+    print("    PLAN=2 still enforces rule 1 (plan-first)")
+    ws2 = tempfile.mkdtemp(prefix="strict2-")
+    payload = {"session_id": "sd2", "hook_event_name": "PreToolUse",
+               "cwd": ws2, "tool_name": "Bash", "tool_input": {"command": "ls"}}
+    rc, msg = run_hook("plan_gate.py", payload, env)
+    check("no plan -> plan block, not dispatch block", rc == 2 and "PLAN.md" in msg)
+
+
 def test_deliverable_workspace_scoping():
     """Re-match #2 regression: /tmp probe scripts must not count."""
     print("\n[13] deliverables are workspace-scoped")
@@ -493,6 +532,7 @@ if __name__ == "__main__":
         test_coach()
         test_deliverable_checkpoints()
         test_plan_gate()
+        test_strict_dispatch()
         test_deliverable_workspace_scoping()
         test_safety()
     finally:

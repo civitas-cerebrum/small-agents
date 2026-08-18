@@ -54,9 +54,12 @@ multi-deliverable task. The harness enforces:
 1. Brainstorm FIRST, then Write ./PLAN.md (ordered easiest-value-first,
    one deliverable + verify command per task; the hard part goes LAST).
    All other tools are blocked until PLAN.md exists.
-2. Tackle each task with a fresh subagent via the Task tool -- brief it
-   with GOAL / CONTEXT (only what that task needs) / COMMANDS / RETURN
-   (capped verdict). Keep this context to the plan plus verdicts.
+2. Tackle each task with a fresh subagent via the Agent/Task tool --
+   brief it with GOAL / CONTEXT (only what that task needs) / COMMANDS /
+   RETURN (capped verdict). Keep this context to the plan plus verdicts.
+   (Under SMALL_AGENTS_PLAN=2 this is ENFORCED: after the plan exists,
+   the main session may only dispatch, edit PLAN.md, and run
+   verifications via Bash described as "VERIFY: ...".)
 3. Bank deliverables early and often; after 25 minutes with nothing
    banked, non-deliverable commands are blocked."""
 
