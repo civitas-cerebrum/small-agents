@@ -51,6 +51,28 @@ NUDGE_METHOD_ERROR = (
     "script -q). Then apply NAME: one sentence, cause plus evidence."
 )
 
+# Deliverable-banking checkpoints. Motivating failure (achilles benchmark,
+# 2026-08-18): a 27B spent its whole 45-min budget reverse-engineering a
+# datepicker's internals -- 84 succeeding probes, so neither the
+# failure-gated guard nor the repeat-capped coach ever fired -- and
+# delivered zero runnable output, while the easy 80% of the task needed
+# none of that investigation. Succeeding commands can still be a spiral.
+CHECKPOINT_MINUTES = (15, 25)
+NUDGE_BANK_VALUE = (
+    "[small-agents] %d minutes elapsed and no deliverable has been written "
+    "yet (only probes/experiments). Investigation is not the product. Bank "
+    "value NOW: build and verify the simplest deliverable the task asks for "
+    "(the easy cases first), then return to the hard part with the easy "
+    "wins already secured. If one sub-problem is consuming everything, "
+    "finish everything else first and time-box the hard one explicitly."
+)
+
+# Paths that never count as deliverables: hidden dirs/files and throwaway
+# probe scripts live outside the task's real output.
+def _is_deliverable(path):
+    parts = [p for p in str(path).split("/") if p]
+    return bool(parts) and not any(p.startswith(".") for p in parts[-2:])
+
 REPEAT_AT = 3  # coach on the 3rd similar command
 
 
@@ -75,6 +97,8 @@ def main():
         st = S.load(session)
         for rec in st.get("approaches", []):
             rec["fails"] = 0
+        if _is_deliverable((ev.get("tool_input") or {}).get("file_path", "")):
+            st["deliverables"] = st.get("deliverables", 0) + 1
         S.save(session, st)
         return 0
 
@@ -92,6 +116,8 @@ def main():
 
     session = ev.get("session_id", "")
     st = S.load(session)
+    import time as _time
+    st.setdefault("t0", _time.time())
 
     idx, rec = S.match_approach(st, toks)
     if rec is None:
@@ -113,6 +139,13 @@ def main():
         # coach at most twice per approach -- a third identical nudge is noise
         note = NUDGE_REPEAT % rec["runs"]
         rec["coached"] = rec.get("coached", 0) + 1
+    else:
+        elapsed_min = (_time.time() - st["t0"]) / 60.0
+        fired = st.get("checkpoints_fired", 0)
+        if (st.get("deliverables", 0) == 0 and fired < len(CHECKPOINT_MINUTES)
+                and elapsed_min >= CHECKPOINT_MINUTES[fired]):
+            note = NUDGE_BANK_VALUE % int(elapsed_min)
+            st["checkpoints_fired"] = fired + 1
 
     S.save(session, st)
     if note:

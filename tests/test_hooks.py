@@ -338,6 +338,49 @@ def test_coach():
     check("ordinary first-time command gets no nudge", n is None)
 
 
+def test_deliverable_checkpoints():
+    """Motivated by the achilles benchmark: 84 succeeding probes, zero
+    deliverables, 45 minutes gone. Succeeding commands must still trigger
+    a bank-value nudge when nothing has been delivered."""
+    print("\n[11] deliverable-banking checkpoints")
+    import time as _t
+    sid = "ckpt-" + os.urandom(4).hex()
+    # simulate an old session start by pre-writing state with t0 in the past
+    sys.path.insert(0, HOOKS)
+    import sa_state as S
+    st = S.load(sid); st["t0"] = _t.time() - 16 * 60; S.save(sid, st)
+    n = coach("curl fetching remote endpoint alpha", sid, 0, "", "ok")
+    check("fires bank-value nudge at 15m with zero deliverables",
+          n is not None and "Bank" in n)
+    n2 = coach("grep searching source tree beta", sid, 0, "", "ok")
+    check("does not re-fire before the next checkpoint", n2 is None)
+
+    st = S.load(sid); st["t0"] = _t.time() - 26 * 60; S.save(sid, st)
+    n3 = coach("node evaluate widget internals gamma", sid, 0, "", "ok")
+    check("fires second checkpoint at 25m", n3 is not None and "Bank" in n3)
+    n4 = coach("python compute statistics delta", sid, 0, "", "ok")
+    check("capped at two checkpoint nudges", n4 is None)
+
+    sid2 = "ckpt2-" + os.urandom(4).hex()
+    st = S.load(sid2); st["t0"] = _t.time() - 16 * 60; S.save(sid2, st)
+    run_hook("coach.py", {"session_id": sid2, "hook_event_name": "PostToolUse",
+        "tool_name": "Write",
+        "tool_input": {"file_path": "tests/e2e/forms.spec.ts"},
+        "tool_response": {"type": "text"}})
+    n5 = coach("ls listing directory epsilon", sid2, 0, "", "ok")
+    check("a real deliverable suppresses the nudge", n5 is None)
+
+    sid3 = "ckpt3-" + os.urandom(4).hex()
+    st = S.load(sid3); st["t0"] = _t.time() - 16 * 60; S.save(sid3, st)
+    run_hook("coach.py", {"session_id": sid3, "hook_event_name": "PostToolUse",
+        "tool_name": "Write",
+        "tool_input": {"file_path": ".playwright-cli/dp-experiment.js"},
+        "tool_response": {"type": "text"}})
+    n6 = coach("cat reading config zeta", sid3, 0, "", "ok")
+    check("hidden-dir probe scripts do NOT count as deliverables",
+          n6 is not None and "Bank" in n6)
+
+
 def test_safety():
     print("\n[6] safety -- the harness must never wedge a session")
     sid = "safe-" + os.urandom(4).hex()
@@ -376,6 +419,7 @@ if __name__ == "__main__":
         test_edit_resets_clock()
         test_block_message_is_truthful()
         test_coach()
+        test_deliverable_checkpoints()
         test_safety()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

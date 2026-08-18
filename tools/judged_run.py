@@ -30,18 +30,35 @@ import subprocess
 import sys
 import time
 
+_JOURNAL = None
+
+
+def journal(kind, **kw):
+    """Per-phase timing journal (JSONL). Enabled with --journal PATH.
+    Instrumentation exists so bottlenecks are measured, not guessed."""
+    if not _JOURNAL:
+        return
+    rec = {"t": time.time(), "kind": kind}
+    rec.update(kw)
+    with open(_JOURNAL, "a") as fh:
+        fh.write(json.dumps(rec) + "\n")
+
 
 # ---------------------------------------------------------------- agents
 
-def run_agent(prompt, workspace, tools, model, timeout, plugin_dir=None):
+def run_agent(prompt, workspace, tools, model, timeout, plugin_dir=None,
+              base_url=None):
     cmd = ["claude", "-p", prompt, "--allowedTools", *tools.split(),
            "--output-format", "json"]
     if model:
         cmd += ["--model", model]
     if plugin_dir:
         cmd += ["--plugin-dir", plugin_dir]
+    env = dict(os.environ)
+    if base_url:
+        env["ANTHROPIC_BASE_URL"] = base_url
     p = subprocess.run(cmd, cwd=workspace, capture_output=True, text=True,
-                       timeout=timeout, stdin=subprocess.DEVNULL)
+                       timeout=timeout, stdin=subprocess.DEVNULL, env=env)
     raw = p.stdout
     i = raw.find("{")
     if i < 0:
@@ -126,8 +143,19 @@ def main():
     ap.add_argument("--plugin-dir", default=None,
                     help="e.g. a checkout of small-agents, loaded into the "
                          "solver session")
+    ap.add_argument("--journal", default=None,
+                    help="write per-phase timing events (JSONL) here")
+    ap.add_argument("--judge-base-url", default=None,
+                    help="route ONLY the judge through this base URL, e.g. "
+                         "a nothink_proxy instance -- benchmarked judge "
+                         "cost is 2.2-2.7 min with thinking enabled; the "
+                         "judge's job (re-run a command, inspect a diff) "
+                         "does not need chain-of-thought")
     args = ap.parse_args()
+    global _JOURNAL
+    _JOURNAL = args.journal
     ws = os.path.abspath(args.workspace)
+    journal("start", goal=args.goal[:200], workspace=ws)
 
     history = ""
     for attempt in range(1, args.attempts + 1):
@@ -138,16 +166,22 @@ def main():
             "finishing — do not claim success without seeing it pass.")
         if history:
             prompt += "\n\nPRIOR ATTEMPT FAILED: " + history
+        t0 = time.time()
         try:
             run_agent(prompt, ws, "Bash Read Write Edit Grep Glob",
                       args.model, args.solver_timeout, args.plugin_dir)
+            journal("solver", attempt=attempt, seconds=round(time.time()-t0, 1))
         except (RuntimeError, subprocess.TimeoutExpired,
                 json.JSONDecodeError) as e:
+            journal("solver_error", attempt=attempt,
+                    seconds=round(time.time()-t0, 1), error=str(e)[:200])
             history = f"solver dispatch error: {e}"
             print(f"[judged]   solver error: {e}", flush=True)
             continue
 
         vr = run_verification(args.verify_cmd, ws)
+        journal("verify", attempt=attempt, passed=vr["passed"],
+                seconds=vr["seconds"])
         print(f"[judged]   harness verification: "
               f"{'PASS' if vr['passed'] else 'FAIL'} "
               f"(exit {vr['exit_code']}, {vr['seconds']}s)", flush=True)
@@ -156,18 +190,24 @@ def main():
             continue
 
         print("[judged]   judge (fresh context)", flush=True)
+        tj = time.time()
         try:
             reply = run_agent(
                 JUDGE_PROMPT.format(goal=args.goal,
                                     verify_cmd=args.verify_cmd,
                                     exit_code=vr["exit_code"],
                                     output=vr["output"]),
-                ws, "Bash Read Grep Glob", args.model, args.judge_timeout)
+                ws, "Bash Read Grep Glob", args.model, args.judge_timeout,
+                base_url=args.judge_base_url)
             verdict = extract_json(reply)
         except Exception as e:
             verdict = {"viable": False, "reason": f"judge error: {e}",
                        "reverified": False}
+        journal("judge", attempt=attempt, seconds=round(time.time()-tj, 1),
+                viable=bool(verdict.get("viable")),
+                reverified=bool(verdict.get("reverified")))
         if verdict.get("viable"):
+            journal("result", status="pass", attempt=attempt)
             print(f"[judged] PASS — judge: {verdict.get('reason','')[:120]}",
                   flush=True)
             return 0
@@ -175,6 +215,7 @@ def main():
         print(f"[judged]   judge REJECTED: {verdict.get('reason','')[:120]}",
               flush=True)
 
+    journal("result", status="fail")
     print(f"[judged] FAIL after {args.attempts} attempt(s): {history[:200]}",
           flush=True)
     return 1
