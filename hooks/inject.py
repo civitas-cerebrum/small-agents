@@ -62,7 +62,10 @@ multi-deliverable task. The harness enforces:
    verifications via Bash described as "VERIFY: ...".)
 3. Bank deliverables early and often; after 25 minutes with nothing
    banked, non-deliverable commands are blocked.
-4. A dispatched subagent DIES IF THIS SESSION ENDS. After dispatching,
+4. Give every dispatch brief a time budget ("aim for <=10 minutes;
+   return a partial verdict rather than overrunning") -- dispatched
+   subagents get harness wrap-up nudges at 10 and 15 minutes.
+5. A dispatched subagent DIES IF THIS SESSION ENDS. After dispatching,
    WAIT for its verdict (blocking TaskOutput) and only then update
    PLAN.md and move on. Ending with unchecked plan tasks is blocked;
    a task you cannot finish must be marked blocked in PLAN.md with a

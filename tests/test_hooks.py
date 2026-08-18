@@ -527,6 +527,43 @@ def test_plan_completion_stop_gate():
     check("inactive outside mission mode", rc == 0)
 
 
+def test_subagent_wrapup():
+    """Re-match #5 regression: a dispatched subagent ran 30+ min of a 45-min
+    budget. Subagent sessions (agent_id set) get wrap-up nudges at 10/15m."""
+    print("\n[16] subagent wrap-up nudges")
+    import time as _t
+    sys.path.insert(0, HOOKS)
+    import sa_state as S
+    sid = "wrap-" + os.urandom(4).hex(); aid = "agent-123"
+    st = S.load(sid)
+    st["agents"] = {aid: {"t0": _t.time() - 11 * 60, "wrapups": 0}}
+    S.save(sid, st)
+    def sub_post(cmd):
+        p = subprocess.run([sys.executable, os.path.join(HOOKS, "coach.py")],
+            input=json.dumps({"session_id": sid, "agent_id": aid,
+                "hook_event_name": "PostToolUse", "tool_name": "Bash",
+                "tool_input": {"command": cmd},
+                "tool_response": {"exit_code": 0, "stdout": "ok", "stderr": ""}}),
+            capture_output=True, text=True)
+        try: return json.loads(p.stdout)["hookSpecificOutput"]["additionalContext"]
+        except Exception: return None
+    n = sub_post("curl inspect live page alpha")
+    check("nudges a subagent at 10 minutes", n is not None and "Wrap up" in n)
+    n2 = sub_post("grep search results beta")
+    check("no re-nudge before 15m", n2 is None)
+    st = S.load(sid); st["agents"][aid]["t0"] = _t.time() - 16 * 60; S.save(sid, st)
+    n3 = sub_post("node run analysis gamma")
+    check("second nudge at 15m", n3 is not None)
+    n4 = sub_post("python compute delta")
+    check("capped at two", n4 is None)
+    n5_p = subprocess.run([sys.executable, os.path.join(HOOKS, "coach.py")],
+        input=json.dumps({"session_id": "wrap-main", "hook_event_name": "PostToolUse",
+            "tool_name": "Bash", "tool_input": {"command": "ls listing files"},
+            "tool_response": {"exit_code": 0, "stdout": "ok", "stderr": ""}}),
+        capture_output=True, text=True)
+    check("main session (no agent_id) unaffected", "Wrap up" not in n5_p.stdout)
+
+
 def test_safety():
     print("\n[6] safety -- the harness must never wedge a session")
     sid = "safe-" + os.urandom(4).hex()
@@ -569,6 +606,7 @@ if __name__ == "__main__":
         test_plan_gate()
         test_strict_dispatch()
         test_plan_completion_stop_gate()
+        test_subagent_wrapup()
         test_deliverable_workspace_scoping()
         test_safety()
     finally:

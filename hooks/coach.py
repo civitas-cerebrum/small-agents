@@ -79,6 +79,20 @@ def _is_deliverable(path, cwd):
 
 REPEAT_AT = 3  # coach on the 3rd similar command
 
+# Subagent wrap-up nudges. Re-match #5: an inspection subagent consumed 30+
+# of the mission's 45 minutes without returning; the orchestrator (correctly)
+# waited, and the external cap killed everything. A dispatched task is a
+# bounded errand, not a residency.
+SUBAGENT_WRAPUP_MIN = (10, 15)
+NUDGE_WRAPUP = (
+    "[small-agents] This dispatched task has been running %d minutes. A "
+    "subagent is a bounded errand: your parent is blocked waiting for your "
+    "verdict. Wrap up NOW -- return what you have (partial inventory, "
+    "partial results, plus what remains) rather than overrunning. A partial "
+    "verdict the orchestrator can act on beats a complete one that arrives "
+    "after the budget is gone."
+)
+
 
 def emit(note):
     print(json.dumps({
@@ -138,6 +152,19 @@ def main():
         rec["fails"] = 0
 
     note = None
+    agent_id = ev.get("agent_id")
+    if agent_id:
+        import time as _t2
+        ag = st.setdefault("agents", {}).setdefault(
+            agent_id, {"t0": _t2.time(), "wrapups": 0})
+        a_min = (_t2.time() - ag["t0"]) / 60.0
+        if (ag["wrapups"] < len(SUBAGENT_WRAPUP_MIN)
+                and a_min >= SUBAGENT_WRAPUP_MIN[ag["wrapups"]]):
+            note = NUDGE_WRAPUP % int(a_min)
+            ag["wrapups"] += 1
+            S.save(session, st)
+            emit(note)
+            return 0
     if METHOD_ERROR.search(blob[:4000]):
         note = NUDGE_METHOD_ERROR
     elif rec["runs"] >= REPEAT_AT and rec.get("coached", 0) < 2:
