@@ -202,6 +202,22 @@ bounded — the same inspection that ran 73 unbounded minutes the night
 before returned in 17. Four earlier strict-dispatch runs all failed on
 unbounded-dispatch economics.
 
+**Coverage-breadth finding (v1.7):** forensic comparison of Opus (27
+tests), PLAN=1 Qwen (11 tests), and PLAN=2 Qwen (6 tests) on the same
+benchmark task revealed two stacked causes for the gap:
+
+| Gap | Cause |
+|---|---|
+| 27 → 11 (Opus → PLAN=1 Qwen) | **Model capability.** Opus spontaneously generates adversarial edge-case tests (~10) from DOM observations; Qwen maps the spec literally, adding zero. |
+| 11 → 6 (PLAN=1 → PLAN=2 Qwen) | **Architecture.** In PLAN=2, the dispatch brief pre-specifies test scope; the subagent implements what's briefed, nothing more. The orchestrator's brief literally said "Keep it to these ~6 tests." Per-field tests (8 of PLAN=1's 11) were never in the brief. No time pressure — the dispatch finished in 9.7 min, well under the 20-min deadline. |
+
+Fix (v1.7): the MISSION text and PLAN_BLOCK template now instruct the
+orchestrator to specify **per-behavior coverage** in dispatch briefs
+("one test per field + edge cases for complex interactions") rather
+than per-area scope. The MISSION text is also now injected for PLAN=2
+sessions (previously only PLAN=1). The subagent delivers what the brief
+asks for, so breadth must be briefed, not assumed.
+
 ## Repo layout
 
 | Path | What |

@@ -66,7 +66,13 @@ Then Write ./PLAN.md containing:
 
 Each task must be small enough to hand to a fresh subagent (Task tool)
 with a four-part brief: GOAL / CONTEXT (only what that task needs) /
-COMMANDS / RETURN. After PLAN.md exists, work resumes normally.
+COMMANDS / RETURN.
+
+Specify BREADTH, not just areas -- "write field-level tests" is vague;
+"one test per field + edge cases for complex interactions" is
+actionable. A subagent delivers what the brief asks for, nothing more.
+
+After PLAN.md exists, work resumes normally.
 """
 
 BANK_BLOCK = """\

@@ -69,6 +69,12 @@ multi-deliverable task. The harness enforces:
    composite -- split it into separate PLAN.md tasks BEFORE dispatching
    (re-match #5: one "inspect everything" dispatch ran 30+ minutes;
    five 5-minute errands would have banked partial value throughout).
+   BREADTH: specify per-behavior coverage in the brief, not per-area.
+   "Write tests for the form" produces minimal coverage; "write one
+   test per field, plus edge cases for each complex interaction
+   (select, datepicker, validation)" produces thorough coverage.
+   The brief caps what the subagent delivers -- list every test or
+   behavior you expect, because the subagent will not add its own.
    If you are the DISPATCHED agent: your brief is your plan -- open by
    listing the 3-5 checks you will perform, then execute them in order;
    do not create plans of your own or dispatch further agents.
@@ -83,7 +89,7 @@ def main():
     if S.disabled():
         return 0
     print(PROTOCOL)
-    if os.environ.get("SMALL_AGENTS_PLAN", "") in ("1", "true"):
+    if os.environ.get("SMALL_AGENTS_PLAN", "") in ("1", "2", "true"):
         print(MISSION)
     return 0
 
