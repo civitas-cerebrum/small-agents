@@ -286,3 +286,50 @@ everything the session learned.
 - A stuck report is a handoff: what you tried, what you ruled out and on what
   evidence, and the best next step.
 - The harness blocks a turn that ends this way.
+
+---
+
+# Dispatch Failure Modes
+
+## 17. Brief Scope Capping
+
+**What happens:** The orchestrator writes a dispatch brief that consolidates
+multiple plan tasks into one, with a narrow scope. "Write tests for the form"
+or "Keep it to these ~6 tests." The subagent implements exactly what the brief
+says — no more, no less — producing minimal output. On the same task, an
+unrestricted session (or one that writes tests in-context) produces 2–3×
+more tests because it expands the scope spontaneously.
+
+**Frequency:** High in strict-dispatch mode. Confirmed by forensic comparison:
+an orchestrator's brief saying "Keep it to these ~6 tests" produced 6 tests;
+the same model writing tests in-context produced 11.
+
+**Countermeasures:**
+- Specify **per-behavior** coverage in the brief, not per-area. "One test per
+  field, plus edge cases for each complex interaction" is actionable; "write
+  tests for the form" is not.
+- List every test or behavior you expect in the brief. The subagent will not
+  add its own.
+- In the plan itself, specify granularity: "field-level tests — one per field"
+  rather than "field-level tests."
+
+---
+
+## 18. Unbounded Dispatch
+
+**What happens:** A dispatched subagent runs indefinitely because nothing in
+the brief says when to stop. Advisory wrap-up nudges are ignored (proven by a
+73-minute dispatch that ran through two nudges). The orchestrator waits
+correctly, and the external cap kills everything.
+
+**Frequency:** High without deadlines. The overnight 90-minute run produced
+fewer tasks than shorter runs because one dispatch consumed the entire budget.
+
+**Countermeasures:**
+- Include a time budget in every brief: "Aim for ≤10 minutes."
+- The harness enforces this in PLAN=2 (dispatches without a time budget
+  reference are blocked).
+- Hard dispatch deadlines (20 min) block all tool use past the window.
+  Advisory nudges at 10/15 minutes prompt wrapping up.
+- The mere existence of a deadline changes behavior: the same inspection
+  that ran 73 minutes unbounded returned in 17 with a deadline.

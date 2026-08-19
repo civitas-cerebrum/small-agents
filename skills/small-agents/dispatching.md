@@ -44,6 +44,15 @@ Rules:
 
 - **One step per dispatch.** "Reproduce the failure" is a dispatch.
   "Reproduce and diagnose and fix" is three.
+- **Include a time budget.** "Aim for ≤10 minutes; return a partial verdict
+  rather than overrunning." Without this, subagents have no reason to stop
+  — one unbounded dispatch ran 73 minutes through two advisory nudges.
+  In PLAN=2 mode the harness enforces this: dispatches without a time
+  budget reference are blocked.
+- **Specify breadth, not areas.** "Write tests for the form" produces
+  minimal coverage; "write one test per field, plus edge cases for each
+  complex interaction" produces thorough coverage. The brief caps what
+  the subagent delivers — it will not add its own scope.
 - **The subagent inherits nothing.** If the brief doesn't contain a fact,
   the subagent doesn't know it. This is a feature: write the brief from
   the notebook, and gaps in the brief expose gaps in your understanding.
@@ -53,6 +62,9 @@ Rules:
 - **Prediction goes in the brief.** "If the hypothesis is right you will
   see X; report whether you saw X" — this keeps step 4 of DIAGNOSE intact
   across the context boundary.
+- **No sub-dispatch.** A subagent executes its brief directly — it does
+  not dispatch further agents. Recursive dispatch wastes context and
+  budget. The harness blocks this in mission mode.
 
 ## Example
 
