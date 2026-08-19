@@ -193,6 +193,15 @@ Rule of thumb from the data: strict dispatch buys context immunity at
 roughly a 2× wall-clock tax on slow substrates. Pay it only when context
 death is otherwise certain.
 
+Validated end-to-end (2026-08-19): with hard dispatch deadlines (v1.6),
+a strict-dispatch run completed for the first time — 10/10 plan tasks,
+6/6 tests green on independent re-run, model-verified 3× green twice,
+committed, self-finished at 72 of 90 minutes. The deadline never had to
+fire: its existence (plus time-budgeted briefs) kept every dispatch
+bounded — the same inspection that ran 73 unbounded minutes the night
+before returned in 17. Four earlier strict-dispatch runs all failed on
+unbounded-dispatch economics.
+
 ## Repo layout
 
 | Path | What |
