@@ -682,6 +682,48 @@ def test_brief_quality_gate():
     check("Task tool also gated in PLAN=2", rc == 2 and "brief" in msg.lower())
 
 
+def test_subdispatch_blocked():
+    """v1.8: dispatched subagents must not dispatch further agents. The
+    MISSION text says so, now the gate enforces it."""
+    print("\n[20] sub-dispatch is blocked")
+    import tempfile
+    ws = tempfile.mkdtemp(prefix="subdispatch-")
+    open(ws + "/PLAN.md", "w").write(
+        "## Tasks\n- [ ] 1. a | verify: t\n- [ ] 2. b | verify: t\n")
+    env = {"SMALL_AGENTS_PLAN": "2"}
+
+    # Subagent trying to dispatch → blocked
+    rc, msg = run_hook("plan_gate.py", {
+        "session_id": "sd-sub", "agent_id": "agent-99",
+        "hook_event_name": "PreToolUse", "cwd": ws,
+        "tool_name": "Agent",
+        "tool_input": {"prompt": "Do a sub-task. Aim for 5 minutes."}}, env)
+    check("subagent Agent dispatch blocked", rc == 2 and "sub-dispatch" in msg.lower())
+
+    rc, msg = run_hook("plan_gate.py", {
+        "session_id": "sd-sub", "agent_id": "agent-99",
+        "hook_event_name": "PreToolUse", "cwd": ws,
+        "tool_name": "Task",
+        "tool_input": {"prompt": "Inspect the page. 10 minutes."}}, env)
+    check("subagent Task dispatch blocked too", rc == 2)
+
+    # Same subagent can still use Bash/Write normally
+    rc, _ = run_hook("plan_gate.py", {
+        "session_id": "sd-sub", "agent_id": "agent-99",
+        "hook_event_name": "PreToolUse", "cwd": ws,
+        "tool_name": "Bash",
+        "tool_input": {"command": "npx playwright test"}}, env)
+    check("subagent Bash still allowed", rc == 0)
+
+    # Orchestrator (no agent_id) can still dispatch
+    rc, _ = run_hook("plan_gate.py", {
+        "session_id": "sd-orch", "hook_event_name": "PreToolUse", "cwd": ws,
+        "tool_name": "Agent",
+        "tool_input": {"prompt": "Do task 1. Aim for 10 minutes.",
+                       "description": "Task 1"}}, env)
+    check("orchestrator Agent dispatch still allowed", rc == 0)
+
+
 def test_safety():
     print("\n[6] safety -- the harness must never wedge a session")
     sid = "safe-" + os.urandom(4).hex()
@@ -729,6 +771,7 @@ if __name__ == "__main__":
         test_deliverable_workspace_scoping()
         test_inject_mission_mode()
         test_brief_quality_gate()
+        test_subdispatch_blocked()
         test_safety()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

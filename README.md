@@ -32,14 +32,16 @@ and did not follow it. So this repo enforces the two rules mechanically.
 - **CHANGE** — PLAN → FOCUS → ACT → VERIFY, for making an edit that works
   (carried forward from the predecessor skill).
 
-**The harness** (`hooks/`) — delivery, coaching, and two blocks:
+**The harness** (`hooks/`) — delivery, coaching, and gates:
 
 | Trigger | Hook | Effect |
 |---|---|---|
 | Session starts | `SessionStart` | The protocol core is injected as context — delivery does not depend on the model choosing to load a skill. |
 | Output shows a method-error ("can only be called from…"), or a 3rd similar command regardless of exit status | `PostToolUse` | A short coaching note is injected (`additionalContext`) — non-blocking, no failure classification needed. |
-| A third run of an approach that already failed twice | `PreToolUse` | Blocked. To proceed, the model must write `HYPOTHESIS: <cause and evidence>` in the tool call's `description`. |
-| Ending a turn with no verdict after a failed investigation | `Stop` | Blocked. The model must state a root cause or say plainly that it is stuck. |
+| A third run of an approach that already failed twice | `PreToolUse` | **Blocked.** To proceed, the model must write `HYPOTHESIS: <cause and evidence>` in the tool call's `description`. |
+| Ending a turn with no verdict after a failed investigation | `Stop` | **Blocked.** The model must state a root cause or say plainly that it is stuck. |
+| PLAN=2: dispatch brief without a time budget | `PreToolUse` | **Blocked.** The brief must mention minutes/time-box. (v1.5 lesson: 73-min unbounded dispatch.) |
+| A dispatched subagent tries to dispatch further agents | `PreToolUse` | **Blocked.** Subagents execute their brief directly — recursive dispatch wastes context and budget. |
 
 The hypothesis gate is the design centre: it forces the one step small
 models skip — committing to a cause in writing — and unlike prose in a chat
@@ -85,7 +87,7 @@ third attempt at the impossible approach and stays silent through all four
 legitimate commands.
 
 ```
-44 passed, 0 failed
+102 passed, 0 failed
 ```
 
 ## A/B tested against a live local model

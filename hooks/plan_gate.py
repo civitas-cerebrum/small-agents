@@ -118,6 +118,18 @@ starts with "VERIFY:".
 """
 
 
+SUBDISPATCH_BLOCK = """\
+BLOCKED by small-agents (no sub-dispatch): you are a dispatched
+subagent. Your brief is your plan -- execute it directly, do not
+dispatch further agents. Sub-dispatch wastes context and budget
+without banking deliverables; the orchestrator owns all dispatch
+decisions.
+
+Open by listing the 3-5 steps from your brief, then execute them
+in order. Return your verdict when done.
+"""
+
+
 BRIEF_BLOCK = """\
 BLOCKED by small-agents (brief quality): this dispatch brief does not
 include a time budget. A subagent with no time budget has no reason to
@@ -169,6 +181,11 @@ def main():
     # is blocked -- the only possible next act is emitting the verdict.
     agent_id = ev.get("agent_id")
     if agent_id:
+        # Subagents must never dispatch further agents -- their brief is
+        # their plan. Recursive dispatch wastes context and budget.
+        if tool in ("Agent", "Task"):
+            sys.stderr.write(SUBDISPATCH_BLOCK)
+            return 2
         session = ev.get("session_id", "")
         st = S.load(session)
         ag = st.setdefault("agents", {}).setdefault(
