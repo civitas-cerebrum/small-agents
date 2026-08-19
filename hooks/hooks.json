@@ -24,7 +24,7 @@
         ]
       },
       {
-        "matcher": "Bash|Write|Edit|NotebookEdit|MultiEdit",
+        "matcher": "Bash|Write|Edit|NotebookEdit|MultiEdit|Agent|Task",
         "hooks": [
           {
             "type": "command",

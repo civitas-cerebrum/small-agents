@@ -118,6 +118,29 @@ starts with "VERIFY:".
 """
 
 
+BRIEF_BLOCK = """\
+BLOCKED by small-agents (brief quality): this dispatch brief does not
+include a time budget. A subagent with no time budget has no reason to
+stop -- the v1.5 inspection dispatch ran 73 minutes, ignoring two
+advisory nudges, because nothing in the brief said when to wrap up.
+
+Add a time budget to the brief, e.g.:
+  "Aim for <=10 minutes. Return a partial verdict rather than overrunning."
+
+Also check: does the brief specify per-behavior coverage (one test per
+field, not "test the form"), and is the task atomic (one plan task per
+dispatch, not a composite of several)?
+"""
+
+
+def _has_time_budget(text):
+    """Does the dispatch brief mention a time budget?"""
+    t = text.lower()
+    if any(w in t for w in ("minutes", "time budget", "time-box", "timebox")):
+        return True
+    return bool(re.search(r'\d+\s*min\b', t))
+
+
 def plan_ok(cwd):
     p = os.path.join(cwd, "PLAN.md")
     try:
@@ -136,7 +159,8 @@ def main():
 
     ev = S.read_event()
     tool = ev.get("tool_name")
-    if tool not in ("Bash", "Write", "Edit", "NotebookEdit", "MultiEdit"):
+    if tool not in ("Bash", "Write", "Edit", "NotebookEdit", "MultiEdit",
+                    "Agent", "Task"):
         return 0
     cwd = ev.get("cwd") or os.getcwd()
     tool_input = ev.get("tool_input") or {}
@@ -155,6 +179,19 @@ def main():
             sys.stderr.write(DEADLINE_BLOCK.format(mins=int(a_min)))
             return 2
         return 0   # within deadline: subagents work freely
+
+    # Agent/Task dispatches: plan must exist first; in PLAN=2 the brief
+    # must include a time budget (v1.5 lesson: 73-min unbounded dispatch).
+    if tool in ("Agent", "Task"):
+        if not plan_ok(cwd):
+            sys.stderr.write(PLAN_BLOCK)
+            return 2
+        if os.environ.get("SMALL_AGENTS_PLAN") == "2":
+            prompt = str(tool_input.get("prompt", ""))
+            if not _has_time_budget(prompt):
+                sys.stderr.write(BRIEF_BLOCK)
+                return 2
+        return 0
 
     # Writing the plan itself is always allowed.
     fp = str(tool_input.get("file_path", ""))

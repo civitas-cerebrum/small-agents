@@ -49,7 +49,7 @@ long window accumulating dead ends."""
 
 
 MISSION = """
-MISSION MODE is active (SMALL_AGENTS_PLAN=1): this is a long,
+MISSION MODE is active (SMALL_AGENTS_PLAN={mode}): this is a long,
 multi-deliverable task. The harness enforces:
 1. Brainstorm FIRST, then Write ./PLAN.md (ordered easiest-value-first,
    one deliverable + verify command per task; the hard part goes LAST).
@@ -89,8 +89,9 @@ def main():
     if S.disabled():
         return 0
     print(PROTOCOL)
-    if os.environ.get("SMALL_AGENTS_PLAN", "") in ("1", "2", "true"):
-        print(MISSION)
+    mode = os.environ.get("SMALL_AGENTS_PLAN", "")
+    if mode in ("1", "2", "true"):
+        print(MISSION.format(mode=mode))
     return 0
 
 

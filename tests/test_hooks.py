@@ -597,6 +597,91 @@ def test_subagent_wrapup():
     check("main session (no agent_id) unaffected", "Wrap up" not in n5_p.stdout)
 
 
+def test_inject_mission_mode():
+    """v1.8: MISSION text must be injected for PLAN=2 (was PLAN=1 only until
+    v1.7), and must show the actual mode in the label."""
+    print("\n[18] inject.py MISSION mode labelling")
+
+    def inject(env):
+        p = subprocess.run([sys.executable, os.path.join(HOOKS, "inject.py")],
+            input="", capture_output=True, text=True,
+            env={**os.environ, **env})
+        return p.stdout
+
+    out1 = inject({"SMALL_AGENTS_PLAN": "1"})
+    check("PLAN=1 emits MISSION text", "MISSION MODE" in out1)
+    check("PLAN=1 label says mode=1", "SMALL_AGENTS_PLAN=1)" in out1)
+
+    out2 = inject({"SMALL_AGENTS_PLAN": "2"})
+    check("PLAN=2 emits MISSION text", "MISSION MODE" in out2)
+    check("PLAN=2 label says mode=2", "SMALL_AGENTS_PLAN=2)" in out2)
+    check("PLAN=2 includes BREADTH guidance", "per-behavior" in out2.lower() or "BREADTH" in out2)
+
+    out0 = inject({})
+    check("no PLAN emits protocol only", "MISSION MODE" not in out0 and "DIAGNOSING" in out0)
+
+
+def test_brief_quality_gate():
+    """v1.8: in PLAN=2, Agent dispatches without a time budget in the brief
+    are blocked. Motivated by arm8 forensics: the orchestrator's brief said
+    'Keep it to these ~6 tests' with no time reference, and the subagent
+    had no reason to stop or expand. The brief caps everything."""
+    print("\n[19] brief quality gate for Agent dispatches")
+    import tempfile
+    ws = tempfile.mkdtemp(prefix="brief-")
+    open(ws + "/PLAN.md", "w").write(
+        "## Goal\nx\n## Tasks\n"
+        "- [ ] 1. a | deliverable: a.ts | verify: t\n"
+        "- [ ] 2. b | deliverable: b.ts | verify: t\n")
+    env2 = {"SMALL_AGENTS_PLAN": "2"}
+    env1 = {"SMALL_AGENTS_PLAN": "1"}
+
+    def gate(tool, tin, env, cwd=ws, agent_id=None):
+        payload = {"session_id": "bq1", "hook_event_name": "PreToolUse",
+                   "cwd": cwd, "tool_name": tool, "tool_input": tin}
+        if agent_id:
+            payload["agent_id"] = agent_id
+        return run_hook("plan_gate.py", payload, env)
+
+    # PLAN=2: no time budget → blocked
+    rc, msg = gate("Agent", {"prompt": "Write tests for the form. "
+        "GOAL: test the submission form. CONTEXT: page-repo at ./page-repository.json.",
+        "description": "Write spec"}, env2)
+    check("PLAN=2 Agent without time budget blocked",
+          rc == 2 and "time budget" in msg.lower())
+
+    # PLAN=2: with time budget → allowed
+    rc, _ = gate("Agent", {"prompt": "Write tests for the form. "
+        "Aim for <=10 minutes. Return a partial verdict rather than overrunning. "
+        "GOAL: test the submission form.",
+        "description": "Write spec"}, env2)
+    check("PLAN=2 Agent with 'minutes' allowed", rc == 0)
+
+    # Various time budget phrasings
+    rc, _ = gate("Agent", {"prompt": "Complete task 3. Time budget: 15 min.",
+        "description": "Task 3"}, env2)
+    check("PLAN=2 Agent with '15 min' allowed", rc == 0)
+
+    rc, _ = gate("Agent", {"prompt": "Inspect the page. Time-box to 8 minutes.",
+        "description": "Inspect"}, env2)
+    check("PLAN=2 Agent with 'time-box' allowed", rc == 0)
+
+    # PLAN=1: no brief gate (dispatch is voluntary, not enforced)
+    rc, _ = gate("Agent", {"prompt": "Write tests for the form.",
+        "description": "Write spec"}, env1)
+    check("PLAN=1 Agent allowed without time budget", rc == 0)
+
+    # Agent before plan exists → plan block, not brief block
+    ws2 = tempfile.mkdtemp(prefix="brief2-")
+    rc, msg = gate("Agent", {"prompt": "Do something."}, env2, cwd=ws2)
+    check("Agent before plan → plan block", rc == 2 and "PLAN.md" in msg)
+
+    # Task tool works the same as Agent
+    rc, msg = gate("Task", {"prompt": "Inspect the page and report findings.",
+        "description": "Task"}, env2)
+    check("Task tool also gated in PLAN=2", rc == 2 and "brief" in msg.lower())
+
+
 def test_safety():
     print("\n[6] safety -- the harness must never wedge a session")
     sid = "safe-" + os.urandom(4).hex()
@@ -642,6 +727,8 @@ if __name__ == "__main__":
         test_subagent_wrapup()
         test_dispatch_deadline()
         test_deliverable_workspace_scoping()
+        test_inject_mission_mode()
+        test_brief_quality_gate()
         test_safety()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
